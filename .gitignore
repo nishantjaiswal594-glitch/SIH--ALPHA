@@ -1,19 +1,39 @@
 .env
 
+# Environment variables
+.env
+
+# Python
 __pycache__/
 *.py[cod]
 *.pyo
 
+<<<<<<< HEAD
+=======
+# Virtual environment
+>>>>>>> 5a5e9d0 (Initial backend authentication setup)
 venv/
 .venv/
 env/
 
+<<<<<<< HEAD
+=======
+# SQLite database
+>>>>>>> 5a5e9d0 (Initial backend authentication setup)
 *.db
 *.sqlite
 *.sqlite3
 
+<<<<<<< HEAD
 .vscode/
 .idea/
 
+=======
+# IDE
+.vscode/
+.idea/
+
+# OS
+>>>>>>> 5a5e9d0 (Initial backend authentication setup)
 .DS_Store
 Thumbs.db
