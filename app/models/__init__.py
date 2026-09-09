@@ -3,3 +3,8 @@ from app.models.student import Student
 from app.models.skill import Skill
 from app.models.student_skill import StudentSkill
 from app.models.application import Application
+from app.models.project import Project
+from app.models.assessment_result import AssessmentResult
+from app.models.company import Company
+from app.models.opportunity import Opportunity
+from app.models.opportunity_skill import OpportunitySkill

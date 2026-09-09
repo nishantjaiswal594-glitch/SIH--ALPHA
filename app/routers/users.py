@@ -1,13 +1,16 @@
+from datetime import date
+
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
 from sqlalchemy import func
+from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models.user import User
-from app.models.student import Student
-from app.models.skill import Skill
-from app.models.student_skill import StudentSkill
 from app.models.application import Application
+from app.models.project import Project
+from app.models.skill import Skill
+from app.models.student import Student
+from app.models.student_skill import StudentSkill
+from app.models.user import User
 from app.schemas.user import StudentProfileUpdate
 from app.services.security import get_current_user
 
@@ -103,26 +106,48 @@ def get_my_student_profile(
         .scalar()
     )
 
+    projects_count = (
+        db.query(func.count(Project.project_id))
+        .filter(
+            Project.student_id == student.student_id
+        )
+        .scalar()
+    )
+
     return {
         "personal": {
             "id": user.id,
             "name": user.name,
             "email": user.email,
             "role": user.role,
-            "is_verified": user.is_verified
+            "is_verified": user.is_verified,
+            "phone": student.phone,
+            "date_of_birth": student.date_of_birth,
+            "location": student.location
         },
         "academic": {
             "student_id": student.student_id,
             "college": student.college,
             "degree": student.degree,
             "branch": student.branch,
-            "graduation_year": student.graduation_year
+            "graduation_year": student.graduation_year,
+            "semester": student.semester,
+            "cgpa": student.cgpa
+        },
+        "career": {
+            "preferred_roles": student.preferred_roles,
+            "preferred_industries": student.preferred_industries,
+            "preferred_work_locations": student.preferred_work_locations
+        },
+        "profile": {
+            "profile_picture_url": student.profile_picture_url,
+            "resume_url": student.resume_url
         },
         "skills": skills,
         "statistics": {
             "skills_added": skills_count or 0,
             "applications": applications_count or 0,
-            "projects": None,
+            "projects": projects_count or 0,
             "internships": None
         }
     }
@@ -168,9 +193,30 @@ def update_my_student_profile(
 
     update_data = profile_data.model_dump(exclude_unset=True)
 
+    # Personal information
     if "name" in update_data:
         user.name = update_data["name"]
 
+    if "phone" in update_data:
+        student.phone = update_data["phone"]
+
+    if "date_of_birth" in update_data:
+        try:
+            student.date_of_birth = (
+                date.fromisoformat(update_data["date_of_birth"])
+                if update_data["date_of_birth"]
+                else None
+            )
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="date_of_birth must use YYYY-MM-DD format"
+            )
+
+    if "location" in update_data:
+        student.location = update_data["location"]
+
+    # Academic information
     if "college" in update_data:
         student.college = update_data["college"]
 
@@ -183,7 +229,26 @@ def update_my_student_profile(
     if "graduation_year" in update_data:
         student.graduation_year = update_data["graduation_year"]
 
+    if "semester" in update_data:
+        student.semester = update_data["semester"]
+
+    if "cgpa" in update_data:
+        student.cgpa = update_data["cgpa"]
+
+    # Career preferences
+    if "preferred_roles" in update_data:
+        student.preferred_roles = update_data["preferred_roles"]
+
+    if "preferred_industries" in update_data:
+        student.preferred_industries = update_data["preferred_industries"]
+
+    if "preferred_work_locations" in update_data:
+        student.preferred_work_locations = update_data[
+            "preferred_work_locations"
+        ]
+
     db.commit()
+
     db.refresh(user)
     db.refresh(student)
 
@@ -194,14 +259,24 @@ def update_my_student_profile(
             "name": user.name,
             "email": user.email,
             "role": user.role,
-            "is_verified": user.is_verified
+            "is_verified": user.is_verified,
+            "phone": student.phone,
+            "date_of_birth": student.date_of_birth,
+            "location": student.location
         },
         "academic": {
             "student_id": student.student_id,
             "college": student.college,
             "degree": student.degree,
             "branch": student.branch,
-            "graduation_year": student.graduation_year
+            "graduation_year": student.graduation_year,
+            "semester": student.semester,
+            "cgpa": student.cgpa
+        },
+        "career": {
+            "preferred_roles": student.preferred_roles,
+            "preferred_industries": student.preferred_industries,
+            "preferred_work_locations": student.preferred_work_locations
         }
     }
 
@@ -377,4 +452,149 @@ def delete_my_skill(
 
     return {
         "message": "Skill removed successfully"
+    }
+
+
+@router.get("/me/projects")
+def get_my_projects(
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    user_id = current_user.get("id")
+
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication token"
+        )
+
+    student = (
+        db.query(Student)
+        .filter(Student.user_id == user_id)
+        .first()
+    )
+
+    if not student:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Student profile not found"
+        )
+
+    projects = (
+        db.query(Project)
+        .filter(Project.student_id == student.student_id)
+        .order_by(Project.project_id)
+        .all()
+    )
+
+    return {
+        "student_id": student.student_id,
+        "projects": [
+            {
+                "project_id": project.project_id,
+                "title": project.title
+            }
+            for project in projects
+        ]
+    }
+
+
+@router.post("/me/projects")
+def add_my_project(
+    title: str,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    user_id = current_user.get("id")
+
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication token"
+        )
+
+    student = (
+        db.query(Student)
+        .filter(Student.user_id == user_id)
+        .first()
+    )
+
+    if not student:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Student profile not found"
+        )
+
+    title = title.strip()
+
+    if not title:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Project title cannot be empty"
+        )
+
+    project = Project(
+        student_id=student.student_id,
+        title=title
+    )
+
+    db.add(project)
+    db.commit()
+    db.refresh(project)
+
+    return {
+        "message": "Project added successfully",
+        "project": {
+            "project_id": project.project_id,
+            "title": project.title
+        }
+    }
+
+
+@router.delete("/me/projects/{project_id}")
+def delete_my_project(
+    project_id: int,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    user_id = current_user.get("id")
+
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication token"
+        )
+
+    student = (
+        db.query(Student)
+        .filter(Student.user_id == user_id)
+        .first()
+    )
+
+    if not student:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Student profile not found"
+        )
+
+    project = (
+        db.query(Project)
+        .filter(
+            Project.project_id == project_id,
+            Project.student_id == student.student_id
+        )
+        .first()
+    )
+
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project not found in your profile"
+        )
+
+    db.delete(project)
+    db.commit()
+
+    return {
+        "message": "Project removed successfully"
     }
