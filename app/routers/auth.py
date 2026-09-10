@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.user import User
+from app.models.student import Student
 
 from app.schemas.user import (
     UserCreate,
@@ -86,6 +87,23 @@ def register(
     db.commit()
     db.refresh(new_user)
 
+    # ---------------------------------------------------------
+    # CREATE STUDENT PROFILE AUTOMATICALLY
+    # ---------------------------------------------------------
+    # Every newly registered student must have a corresponding
+    # row in the students table so that profile, skills,
+    # projects, assessment, skill analysis and skill-gap APIs
+    # can find the student record.
+    if user.role.lower() == "student":
+        student = Student(
+            user_id=new_user.id
+        )
+
+        db.add(student)
+        db.commit()
+        db.refresh(student)
+
+    # Send verification email after user/student creation
     send_verification_email(
         new_user.email,
         verification_token
@@ -372,6 +390,24 @@ def google_login(
     # Use Google's name only if our account has no name
     if not user.name and name:
         user.name = name
+
+    # ---------------------------------------------------------
+    # ENSURE STUDENT PROFILE EXISTS
+    # ---------------------------------------------------------
+    # This also fixes older student accounts that may have a
+    # users row but no corresponding students row.
+    if user.role.lower() == "student":
+        existing_student = (
+            db.query(Student)
+            .filter(Student.user_id == user.id)
+            .first()
+        )
+
+        if not existing_student:
+            student = Student(
+                user_id=user.id
+            )
+            db.add(student)
 
     db.commit()
     db.refresh(user)
